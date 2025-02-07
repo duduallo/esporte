@@ -1,0 +1,63 @@
+// update-cache.js
+const fs = require('fs');
+const fetch = require('node-fetch');
+
+async function updateCache() {
+  try {
+    const apiKey = 'fc50f6f2e645f673dee9243cb67a7f5d'; // Substitua pela sua chave da API
+    const today = new Date().toISOString().split('T')[0]; // Data atual no formato YYYY-MM-DD
+
+    // Busca partidas ao vivo
+    const liveResponse = await fetch(`https://v3.football.api-sports.io/fixtures?live=all`, {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'v3.football.api-sports.io'
+      }
+    });
+    const liveData = await liveResponse.json();
+
+    // Busca próximos jogos do dia
+    const upcomingResponse = await fetch(`https://v3.football.api-sports.io/fixtures?date=${today}`, {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'v3.football.api-sports.io'
+      }
+    });
+    const upcomingData = await upcomingResponse.json();
+
+    // Transforma os dados
+    const liveMatches = transformData(liveData);
+    const upcomingMatches = transformData(upcomingData).filter(match => match.status === 'NS');
+
+    // Salva os dados em um arquivo JSON
+    const cacheData = { liveMatches, upcomingMatches };
+    fs.writeFileSync('cache.json', JSON.stringify(cacheData, null, 2));
+    console.log('Cache atualizado com sucesso!');
+  } catch (error) {
+    console.error('Erro ao atualizar o cache:', error);
+  }
+}
+
+function transformData(data) {
+  if (!data.response || data.response.length === 0) return [];
+  return data.response.map(match => {
+    const utcDate = new Date(match.fixture.date);
+    const brasiliaTime = new Date(utcDate.getTime() - 3 * 60 * 60 * 1000); // Converte para Brasília (UTC-3)
+    const formattedTime = brasiliaTime.toISOString().split('T')[1].substring(0, 5);
+
+    return {
+      homeTeam: match.teams.home.name,
+      awayTeam: match.teams.away.name,
+      score: match.goals.home !== null && match.goals.away !== null
+        ? `${match.goals.home} - ${match.goals.away}`
+        : 'Em andamento...',
+      time: formattedTime,
+      status: match.fixture.status.short
+    };
+  });
+}
+
+// Executa o script
+updateCache();
